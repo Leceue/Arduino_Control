@@ -13,12 +13,12 @@
  * @param R R为正定的控制加权矩阵，R矩阵元素变大意味着希望控制输入能够尽可能小。
  * @return
  */
-MatrixXd LQRControl::calRicatti(MatrixXd A, MatrixXd B, MatrixXd Q, MatrixXd R) {
-    MatrixXd Qf= Q;
-    MatrixXd P = Qf;
-    MatrixXd P_;
+MatrixXd LQRControl::calRicatti(Matrix<3,3> A, Matrix<3,1> B, Matrix<3,3> Q, Matrix<1,1> R) {
+    Matrix<3,3> Qf= Q;
+    Matrix<3,3> P = Qf;
+    Matrix<3,3> P_;
     for(int i=0;i<N;i++){
-        P_ = Q+A.transpose()*P*A-A.transpose()*P*B*(R+B.transpose()*P*B).inverse()*B.transpose()*P*A;
+        P_ = Q+(~A)*P*A-(~A)*P*B*inverse(R+(~B)*P*B)*(~B)*P*A;
         //小于预设精度时返回
         if((P_-P).maxCoeff()<EPS&&(P-P_).maxCoeff()<EPS)break;
         //if((P_-P).cwiseAbs().maxCoeff()<EPS)break;
@@ -49,10 +49,10 @@ void P_update(){
 }
 
 double LQRControl::lqrControl() {
-    MatrixXd X(3,1);
-    X<<now_state.v-target_state.v,now_state.theta-target_state.theta,now_state.w-target_state.w;
-    MatrixXd K = -(R+B.transpose()*P*B).inverse()*B.transpose()*P*A;
-    MatrixXd u = K*X; //[v-ref_v,delta-ref_delta,w-ref_w]
+    Matrix<3,1> X;
+    X={now_state.v-target_state.v,now_state.theta-target_state.theta,now_state.w-target_state.w}
+    Matrix<1,3> K = -inverse(R+(~B)*P*B))*(~B)*P*A;
+    Matrix<1,1> u = K*X; //[v-ref_v,delta-ref_delta,w-ref_w]
 
     return u(1,0);
 }
