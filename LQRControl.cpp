@@ -44,7 +44,7 @@ void LQRControl::set_model(MatrixXd A, MatrixXd B, MatrixXd Q, MatrixXd R){
     this->R = R;
 }
 
-void P_update(){
+void LQRControl::P_update(){
     P = calRicatti(A,B,Q,R);
 }
 
@@ -54,5 +54,5 @@ double LQRControl::lqrControl() {
     Matrix<1,3> K = -inverse(R+(~B)*P*B))*(~B)*P*A;
     Matrix<1,1> u = K*X; //[v-ref_v,delta-ref_delta,w-ref_w]
 
-    return u(1,0);
+    return u(1);
 }

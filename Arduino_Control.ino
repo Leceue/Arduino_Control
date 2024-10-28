@@ -1,6 +1,6 @@
 #include <SimpleFOC.h>
 #include <Servo.h>
-// #include <cstdio>
+#include <BasicLinearAlgebra.h>
 #include "mpu6050_crl.h"
 #include <math.h>
 #include "FOC.h"
@@ -100,26 +100,42 @@ void motor_init(){
     Serial.println("Motor2 ready.");
 }
 
-MatrixXd espA(MatrixXd A, int i = 1){
-    MatrixXd I = MatrixXd::Identity(A.rows(), A.cols());
-    return A * t + I * i + 1 / 2 * A * A * t * t;
+BLA::Matrix<3,3> espA(const BLA::Matrix<3,3>& A, int i = 1) {
+    BLA::Matrix<3,3> I = {
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
+    };
+    return A * t + I * i + (A * A) * (t * t / 2);
 }
 
-void model_Calc(){
-    MatrixXd A(3,3);
-    MatrixXd B(3,1);
-    MatrixXd Q(3,3);
-    MatrixXd R(1,1);
-    A << 0, 1, 0,
+void model_Calc() {
+    // 系统矩阵定义
+    BLA::Matrix<3,3> A = {
+        0, 1, 0,
         m * g * h / (J + M * m * h * h / (M + m)), 0, 0,
-        -(m * m * h * h * g) / (M * m * h * h + (M + m) * J), 0, 0;
-    B << 0, -1 / (J + M * m * h * h / (M + m)), -m * h / (M * m * h * h + (M + m) * J);
-    Q << 1, 0, 0,
-         0, 1, 0,
-         0, 0, 1;
-    R << 1;
+        -(m * m * h * h * g) / (M * m * h * h + (M + m) * J), 0, 0
+    };
+    
+    BLA::Matrix<3,1> B = {
+        0, 
+        -1 / (J + M * m * h * h / (M + m)), 
+        -m * h / (M * m * h * h + (M + m) * J)
+    };
+    
+    BLA::Matrix<3,3> Q = {
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
+    };
+    
+    BLA::Matrix<1,1> R = {1};
+
+    // 离散化处理
     A = espA(A);
-    B = espA(A, 0)*MatrixXd::inverse(A)*B;
+    B = espA(A, 0) * inverse(A) * B;  // 注意这里使用BasicLinearAlgebra的inverse
+    
+    // 设置LQR控制器参数
     lqr.set_model(A, B, Q, R);
 }
 
