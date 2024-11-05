@@ -37,7 +37,7 @@ void LQRControl::set_now_state(State now_state) {
     this->now_state = now_state;
 }
 
-void LQRControl::set_model(MatrixXd A, MatrixXd B, MatrixXd Q, MatrixXd R){
+void LQRControl::set_model(Matrix<3,3> A, Matrix<3,1> B, Matrix<3,3> Q, Matrix<1,1> R){
     this->A = A;
     this->B = B;
     this->Q = Q;
