@@ -5,7 +5,7 @@
 
 class motorCtrl {
 private:
-    BLDCMotor motor;
+    BLDCMotor motor = BLDCMotor(14);
     BLDCDriver3PWM* driver;
     MagneticSensorPWM* sensor;
     bool closedloop_enabled;
@@ -14,7 +14,7 @@ private:
     float voltage_limit;         // [V]
     float velocity_limit;        // [rad/s]
     float torque_constant;       // Nm/V
-    float now_velocity;
+    float now_velocity = 0;
     
     // 存储中断处理函数指针
     void (*pwmHandler)();
@@ -26,9 +26,8 @@ private:
     static motorCtrl* instances[2];  // 支持两个电机实例
     
 public:
-    motorCtrl(int id, int pole_pairs, int pwmA, int pwmB, int pwmC, int enablepin) 
-        : motor(pole_pairs)
-        , driver(nullptr)
+    motorCtrl(int id, int pwmA, int pwmB, int pwmC, int enablepin) 
+        : driver(nullptr)
         , sensor(nullptr)
         , closedloop_enabled(false)
         , voltage_limit(16)
@@ -99,17 +98,22 @@ public:
     }
     
     void init() {
-        if (!sensor || !driver) return;
+        // if (!sensor || !driver) return;
         
         // Sensor initialization
-        sensor->init();
+        // sensor->init();
+        // Link sensor and driver
+        if (closedloop_enabled) {
+            motor.linkSensor(sensor);
+        }
         
         // Driver configuration
         driver->voltage_power_supply = 22.2;
         driver->init();
+        motor.linkDriver(driver);
         
         // Motor configuration
-        motor.foc_modulation = FOCModulationType::SpaceVectorPWM;
+        // motor.foc_modulation = FOCModulationType::SpaceVectorPWM;
         
         // Set control mode based on closed-loop flag
         if (closedloop_enabled) {
@@ -122,12 +126,6 @@ public:
         // Set limits
         motor.voltage_limit = voltage_limit;
         motor.velocity_limit = velocity_limit;
-        
-        // Link sensor and driver
-        if (closedloop_enabled) {
-            motor.linkSensor(sensor);
-        }
-        motor.linkDriver(driver);
         
         // Initialize motor
         motor.init();
@@ -152,6 +150,7 @@ public:
     }
     
     void Ctrl_loop() {
+        motor.move(now_velocity);
         if (closedloop_enabled) {
             motor.loopFOC();
         }
@@ -159,6 +158,8 @@ public:
     
     void torqueCtrl(float torque) {
         float target_velocity = torque2velocity(torque);
+        Serial.print("Target velocity: ");
+        Serial.println(target_velocity);
         now_velocity = target_velocity;
         motor.move(target_velocity);
     }

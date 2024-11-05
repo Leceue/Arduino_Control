@@ -43,19 +43,19 @@ using namespace BLA;
 #define mpu6050_interrupt_pin 51
 
 // model parameter
-const float M = 0.5;   // 底盘质量
-const float m = 0.3;   // 上体质量
-const float J = 0.002; // 整体惯性矩
-const float t = 0.01;  // 采样时间
-const float g = 9.8;   // 重力加速度
-const float R = 0.03;  // 轮子半径
-float h = 0.4;         // 重心高度
+const float M = 0.3;   // 底盘质量 kg
+const float m = 0.5;   // 上体质量 kg
+const float J = 0.001; // 整体惯性矩 kg*m^2
+const float t = 0.01;  // 采样时间 s
+const float g = 9.8;   // 重力加速度 m/s^2
+const float R = 0.03;  // 轮子半径 m
+float h = 0.065;       // 重心高度 m
 
 //--------------------全局变量定义--------------------
 
 // 电机控制
-motorCtrl motor1(0, 14, motor1_pwmA, motor1_pwmB, motor1_pwmC, motor1_enablepin);
-motorCtrl motor2(1, 14, motor2_pwmA, motor2_pwmB, motor2_pwmC, motor2_enablepin);
+motorCtrl motor1(0, motor1_pwmA, motor1_pwmB, motor1_pwmC, motor1_enablepin);
+motorCtrl motor2(1, motor2_pwmA, motor2_pwmB, motor2_pwmC, motor2_enablepin);
 // 舵机控制
 Servo servo1[2];
 Servo servo2[2];
@@ -101,11 +101,11 @@ void Servo_init()
 
 void motor_init()
 {
-    motor1.motorsensor(motor1_sensor_pin, motor1_min_raw, motor1_max_raw);
+    // motor1.motorsensor(motor1_sensor_pin, motor1_min_raw, motor1_max_raw);
     motor1.init();
     Serial.println("Motor1 ready.");
 
-    motor2.motorsensor(motor2_sensor_pin, motor2_min_raw, motor2_max_raw);
+    // motor2.motorsensor(motor2_sensor_pin, motor2_min_raw, motor2_max_raw);
     motor2.init();
     Serial.println("Motor2 ready.");
 }
@@ -170,6 +170,7 @@ void state_update()
     }
     unsigned long now_time = millis();
     unsigned long dt = now_time - last_time;
+    last_time = now_time;
     State now_state;
     // 倾斜角度更新
     float last_ypr[3];
@@ -178,17 +179,10 @@ void state_update()
     last_ypr[2] = ypr_data[2];
     mpu_get(ypr_data, gyro_data);
 
-    Serial.println("ypr_v\t");
-    Serial.print((ypr_data[0]-last_ypr[0]) / dt*1000);
-    Serial.print("\t");
-    Serial.print((ypr_data[1]-last_ypr[1]) / dt*1000);
-    Serial.print("\t");
-    Serial.println((ypr_data[2]-last_ypr[2]) / dt*1000);
-
     // 当前姿态更新
     now_state.v = (motor1.getVelocity() + motor2.getVelocity()) * R / 2;
     now_state.theta = ypr_data[1];
-    now_state.w = (ypr_data[1]-last_ypr[1]) / dt*1000;
+    now_state.w = (ypr_data[1] - last_ypr[1]) / dt * 1000;
     lqr.set_now_state(now_state);
 
     // 模型更新
@@ -220,22 +214,52 @@ void setup()
     Serial.println("Openned the Serial\n");
     Servo_init(); // 初始化舵机
     mpu_init(mpu6050_interrupt_pin); //占用了51号引脚，初始化MPU6050
-    
-    // motor_init(); //初始化电机
+    motor_init(); // 初始化电机
+    state_init(); // 初始化状态
 }
 
 int count = 0;
 
+void servo_test();
+void mpu_test();
+void motor_test();
+void LQR_test();
+
 void loop()
 {
-    // motor1.Ctrl_loop();
-    // motor2.Ctrl_loop();
-    // state_update();
+    LQR_test();
+    delay(10);
+}
 
-    // if (Serial.available())
-    // {
+void LQR_test(){
+    state_update();
+    State target_state;
+    target_state.v = 0;
+    target_state.theta = 0;
+    target_state.w = 0;
+    lqr.set_target_state(target_state);
+    float torque = lqr.lqrControl();
+    Serial.print("Torque ");
+    Serial.println(torque);
+}
 
-    // }
+void motor_test()
+{
+    motor1.Ctrl_loop();
+    while (Serial.available())
+    {
+        float torque = Serial.parseFloat();
+        motor1.torqueCtrl(torque);
+        // motor2.torqueCtrl(torque);
+        Serial.print("Torque ");
+        Serial.println(torque);
+        while (Serial.available())
+            Serial.read();
+    }
+}
+
+void mpu_test()
+{
     static unsigned long last_time = 0;
     if (last_time == 0)
     {
@@ -253,7 +277,6 @@ void loop()
     last_ypr[1] = ypr_data[1];
     last_ypr[2] = ypr_data[2];
     mpu_get(ypr_data, gyro_data);
-
     Serial.print("ypr\t");
     Serial.print(ypr_data[0] * 180 / M_PI);
     Serial.print("\t");
@@ -262,66 +285,54 @@ void loop()
     Serial.println(ypr_data[2] * 180 / M_PI);
 
     Serial.println("ypr_v\t");
-    Serial.print((ypr_data[0]-last_ypr[0]) / dt*1000);
+    Serial.print((ypr_data[0] - last_ypr[0]) / dt * 1000);
     Serial.print("\t");
-    Serial.print((ypr_data[1]-last_ypr[1]) / dt*1000);
+    Serial.print((ypr_data[1] - last_ypr[1]) / dt * 1000);
     Serial.print("\t");
-    Serial.println((ypr_data[2]-last_ypr[2]) / dt*1000);
-    // Serial.print("gyro\t");
-    // Serial.print(gyro_data[0] * 180 / M_PI);
-    // Serial.print("\t");
-    // Serial.print(gyro_data[1] * 180 / M_PI);
-    // Serial.print("\t");
-    // Serial.println(gyro_data[2] * 180 / M_PI);
-
-    delay(1000);
-    // if (++count % 100 == 0)
-    // {
-    //     State Target;
-    //     Target.v = 0;
-    //     Target.theta = 0;
-    //     Target.w = 0;
-    //     count = 0;
-    // }
-
-    // mpu_get(ypr_data);
-    // Serial.print("ypr\t");
-    // Serial.print(ypr_data[0]*180/M_PI);
-    // Serial.print("\t");
-    // Serial.print(ypr_data[1]*180/M_PI);
-    // Serial.print("\t");
-    // Serial.println(ypr_data[2]*180/M_PI);
-
-    // delay(100);
+    Serial.println((ypr_data[2] - last_ypr[2]) / dt * 1000);
 }
 
-//servo1_test
-        // int angle = Serial.parseInt();
-        // int id = angle / 1000;
-        // angle = angle % 1000;
-        // if(id == 1){
-        //     servo1[0].write(angle);
-        //     Serial.print("Servo11 ");
-        //     Serial.println(angle);
-        // }else if(id == 2){
-        //     servo1[1].write(angle);
-        //     Serial.print("Servo12 ");
-        //     Serial.println(angle);
-        // }else if(id == 3){
-        //     servo2[0].write(angle);
-        //     Serial.print("Servo21 ");
-        //     Serial.println(angle);
-        // }else if(id == 4){
-        //     servo2[1].write(angle);
-        //     Serial.print("Servo22 ");
-        //     Serial.println(angle);
-        // }else if(id == 5){
-        //     if(angle > 90) angle = 90;
-        //     servo1[0].write(servo11_initangle-angle);
-        //     servo1[1].write(servo12_initangle+angle);
-        // }else if(id == 6){
-        //     if(angle > 90) angle = 90;
-        //     servo2[0].write(servo21_initangle+angle);
-        //     servo2[1].write(servo22_initangle-angle);
-        // }
-
+void servo_test()
+{
+    int angle = Serial.parseInt();
+    int id = angle / 1000;
+    angle = angle % 1000;
+    if (id == 1)
+    {
+        servo1[0].write(angle);
+        Serial.print("Servo11 ");
+        Serial.println(angle);
+    }
+    else if (id == 2)
+    {
+        servo1[1].write(angle);
+        Serial.print("Servo12 ");
+        Serial.println(angle);
+    }
+    else if (id == 3)
+    {
+        servo2[0].write(angle);
+        Serial.print("Servo21 ");
+        Serial.println(angle);
+    }
+    else if (id == 4)
+    {
+        servo2[1].write(angle);
+        Serial.print("Servo22 ");
+        Serial.println(angle);
+    }
+    else if (id == 5)
+    {
+        if (angle > 90)
+            angle = 90;
+        servo1[0].write(servo11_initangle - angle);
+        servo1[1].write(servo12_initangle + angle);
+    }
+    else if (id == 6)
+    {
+        if (angle > 90)
+            angle = 90;
+        servo2[0].write(servo21_initangle + angle);
+        servo2[1].write(servo22_initangle - angle);
+    }
+}
