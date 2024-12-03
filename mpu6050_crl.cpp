@@ -121,18 +121,6 @@ void mpu_get(float *ypr_ret, float *gyro_ret) {
     if (!dmpReady) return;
     // read a packet from FIFO
     if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
-        #ifdef OUTPUT_READABLE_EULER
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetEuler(euler, &q);
-            // Serial.print("euler\t");
-            // Serial.print(euler[0] * 180/M_PI);
-            // Serial.print("\t");
-            // Serial.print(euler[1] * 180/M_PI);
-            // Serial.print("\t");
-            // Serial.println(euler[2] * 180/M_PI);
-        #endif
-
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
             mpu.dmpGetQuaternion(&q, fifoBuffer);
@@ -152,20 +140,6 @@ void mpu_get(float *ypr_ret, float *gyro_ret) {
             // Serial.print(ypr[1] * 180/M_PI);
             // Serial.print("\t");
             // Serial.println(ypr[2] * 180/M_PI);
-        #endif
-
-        #ifdef OUTPUT_READABLE_REALACCEL
-            // display real acceleration, adjusted to remove gravity
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            Serial.print("areal\t");
-            Serial.print(aaReal.x);
-            Serial.print("\t");
-            Serial.print(aaReal.y);
-            Serial.print("\t");
-            Serial.println(aaReal.z);
         #endif
 
         // blink LED to indicate activity

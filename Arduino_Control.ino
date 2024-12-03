@@ -16,7 +16,7 @@ using namespace BLA;
 #define motor1_pwmA 2
 #define motor1_pwmB 3
 #define motor1_pwmC 4
-#define motor1_enablepin 53
+#define motor1_enablepin 50
 #define motor1_sensor_pin 5
 // 记着测量下raw值
 #define motor1_min_raw 0
@@ -40,7 +40,7 @@ using namespace BLA;
 #define servo21_initangle 0
 #define servo22_initangle 180
 
-#define mpu6050_interrupt_pin 51
+#define mpu6050_interrupt_pin 18
 
 // model parameter
 const float M = 0.3;   // 底盘质量 kg
@@ -208,12 +208,12 @@ void state_Control(State Target)
 void setup()
 {
     // Initialize serial communication at 9600 bits per second:
-    Serial.begin(115200);
+    Serial.begin(38400);
     while (!Serial)
         ; // wait for Leonardo enumeration, others continue immediately
     Serial.println("Openned the Serial\n");
     Servo_init(); // 初始化舵机
-    mpu_init(mpu6050_interrupt_pin); //占用了51号引脚，初始化MPU6050
+    mpu_init(mpu6050_interrupt_pin); //占用了21号引脚，初始化MPU6050
     motor_init(); // 初始化电机
     state_init(); // 初始化状态
 }
@@ -228,10 +228,14 @@ void LQR_test();
 void loop()
 {
     LQR_test();
+    //motor_test();
+     //mpu_test();
     delay(10);
 }
 
 void LQR_test(){
+    motor1.Ctrl_loop();
+    motor2.Ctrl_loop();
     state_update();
     State target_state;
     target_state.v = 0;
@@ -239,6 +243,8 @@ void LQR_test(){
     target_state.w = 0;
     lqr.set_target_state(target_state);
     float torque = lqr.lqrControl();
+    motor1.torqueCtrl(torque);
+    motor2.torqueCtrl(-torque);
     Serial.print("Torque ");
     Serial.println(torque);
 }
@@ -246,11 +252,12 @@ void LQR_test(){
 void motor_test()
 {
     motor1.Ctrl_loop();
+    motor2.Ctrl_loop();
     while (Serial.available())
     {
         float torque = Serial.parseFloat();
         motor1.torqueCtrl(torque);
-        // motor2.torqueCtrl(torque);
+        motor2.torqueCtrl(-torque);
         Serial.print("Torque ");
         Serial.println(torque);
         while (Serial.available())
