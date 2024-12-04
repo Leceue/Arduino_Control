@@ -158,10 +158,10 @@ public:
     
     void torqueCtrl(float torque) {
         float target_velocity = torque2velocity(torque);
-        Serial.print("Target velocity: ");
-        Serial.println(target_velocity);
+        //Serial.print("Target velocity: ");
+        // Serial.println(target_velocity);
         now_velocity = target_velocity;
-        motor.move(target_velocity);
+        // motor.move(target_velocity);
     }
     
     void setClosedLoop(bool enable) {
