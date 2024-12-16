@@ -5,17 +5,16 @@
 
 class motorCtrl {
 private:
-    BLDCMotor motor = BLDCMotor(14);
+    BLDCMotor motor = BLDCMotor(14,10.9,33,0.00474);
     BLDCDriver3PWM* driver;
     MagneticSensorPWM* sensor;
     bool closedloop_enabled;
     
     // Control parameters
-    float voltage_limit;         // [V]
-    float velocity_limit;        // [rad/s]
     float torque_constant;       // Nm/V
-    float now_velocity = 0;
-    
+    float now_torque = 0;
+    float Kt = 0.27; // Nm/A 电机转矩常数
+
     // 存储中断处理函数指针
     void (*pwmHandler)();
     
@@ -30,9 +29,7 @@ public:
         : driver(nullptr)
         , sensor(nullptr)
         , closedloop_enabled(false)
-        , voltage_limit(16)
-        , velocity_limit(30)
-        , torque_constant(0.21)
+        , torque_constant(0.27)
         , pwmHandler(nullptr)
         , motorId(id) 
     {
@@ -108,25 +105,16 @@ public:
         }
         
         // Driver configuration
-        driver->voltage_power_supply = 22.2;
+        driver->voltage_power_supply = 14.8;
         driver->init();
         motor.linkDriver(driver);
         
-        // Motor configuration
-        // motor.foc_modulation = FOCModulationType::SpaceVectorPWM;
-        
         // Set control mode based on closed-loop flag
-        if (closedloop_enabled) {
-            motor.controller = MotionControlType::velocity;
-            motor.torque_controller = TorqueControlType::voltage;
-        } else {
-            motor.controller = MotionControlType::velocity_openloop;
-        }
-        
-        // Set limits
-        motor.voltage_limit = voltage_limit;
-        motor.velocity_limit = velocity_limit;
-        
+        motor.torque_controller = TorqueControlType::voltage;
+        motor.controller = MotionControlType::torque;
+
+        motor.voltage_limit = 14.8;
+
         // Initialize motor
         motor.init();
         
@@ -150,17 +138,15 @@ public:
     }
     
     void Ctrl_loop() {
-        motor.move(now_velocity);
         if (closedloop_enabled) {
             motor.loopFOC();
         }
+        motor.target = now_torque/Kt;
+        motor.move();
     }
     
     void torqueCtrl(float torque) {
-        float target_velocity = torque2velocity(torque);
-        //Serial.print("Target velocity: ");
-        // Serial.println(target_velocity);
-        now_velocity = target_velocity;
+        now_torque = torque;
         // motor.move(target_velocity);
     }
     
@@ -169,16 +155,10 @@ public:
         init();
     }
     
-    void setParameters(float v_limit, float vel_limit, float torque_const) {
-        voltage_limit = v_limit;
-        velocity_limit = vel_limit;
-        torque_constant = torque_const;
-    }
-    
     // 获取电机状态的方法
     int getId() const { return motorId; }
     // float getVelocity() const { return motor.shaft_velocity; }
-    float getVelocity() const { return now_velocity; }
+    float getVelocity() const { return now_torque/Kt*33; }
     // float getAngle() const { return motor.shaft_angle; }
     // bool isEnabled() const { return motor.enabled; }
 };

@@ -1,7 +1,7 @@
 #include <SimpleFOC.h>
 #include <Servo.h>
 #include <BasicLinearAlgebra.h>
-#include "mpu6050_crl.h"
+#include "MPU_old/mpu6050_crl.h"
 #include <math.h>
 #include "FOC.h"
 #include "LQRCtrl.h"
@@ -43,14 +43,14 @@ using namespace BLA;
 #define mpu6050_interrupt_pin 18
 
 // model parameter
-float h_init = (52.305 + 30) * 0.001; // 重心高度 m
-float h = (52.305+30)*0.001;       // 重心高度 m
 const float M = 0.4;   // 底盘质量 kg
 const float m = 1;   // 上体质量 kg
 const float J = m*h*h*1.5; // 整体惯性矩 kg*m^2
 const float t = 0.01;  // 采样时间 s
 const float g = 9.8;   // 重力加速度 m/s^2
 const float R = 0.03;  // 轮子半径 m
+float h_init = (52.305 + 30) * 0.001; // 重心高度 m
+float h = (52.305+30)*0.001;       // 重心高度 m
 float L_h = h;
 float R_h = h;
 // 0度时的高度 (52.305+30)*0.001m
@@ -90,41 +90,21 @@ struct Model
 // 舵机角度与高度换算，height单位mm
 int height2angle(float height)
 {
-    height -= 30;
     return round(180 * (Pi - atan(height / 18) - acos((height * height - 5976) / (180 * sqrt(324 + height * height)))));
 }
 
 // 高度控制
 void HeightCtrl(float up_height)
 {
-    int angle = height2angle(up_height + h*1000);
-    int currentAngleL1 = servo1[0].read();
-    int currentAngleL2 = servo1[1].read();
-    int currentAngleR1 = servo2[0].read();
-    int currentAngleR2 = servo2[1].read();
-
-    int stepL1 = (servo11_initangle - angle - currentAngleL1) / 10;
-    int stepL2 = (servo12_initangle + angle - currentAngleL2) / 10;
-    int stepR1 = (servo21_initangle + angle - currentAngleR1) / 10;
-    int stepR2 = (servo22_initangle - angle - currentAngleR2) / 10;
-
-    for (int i = 0; i < 10; i++) {
-        servo1[0].write(currentAngleL1 + stepL1 * i);
-        servo1[1].write(currentAngleL2 + stepL2 * i);
-        servo2[0].write(currentAngleR1 + stepR1 * i);
-        servo2[1].write(currentAngleR2 + stepR2 * i);
-        delay(20); // Adjust delay as needed for smoothness
-    }
-
+    int angle = height2angle(up_height + h);
     servo1[0].write(servo11_initangle - angle);
     servo1[1].write(servo12_initangle + angle);
     servo2[0].write(servo21_initangle + angle);
     servo2[1].write(servo22_initangle - angle);
-    h = up_height*0.001 + h;
+    h = up_height + h;
     L_h = h;
     R_h = h;
     model.h = h;
-    Serial.print(h);
     model_Calc();
 }
 
@@ -134,27 +114,6 @@ void Servo_init()
     servo1[1].attach(servo12_pin);
     servo2[0].attach(servo21_pin);
     servo2[1].attach(servo22_pin);
-    int steps = 10;
-    int delayTime = 20; // Adjust delay as needed for smoothness
-
-    int currentAngleL1 = servo1[0].read();
-    int currentAngleL2 = servo1[1].read();
-    int currentAngleR1 = servo2[0].read();
-    int currentAngleR2 = servo2[1].read();
-
-    int stepL1 = (servo11_initangle - currentAngleL1) / steps;
-    int stepL2 = (servo12_initangle - currentAngleL2) / steps;
-    int stepR1 = (servo21_initangle - currentAngleR1) / steps;
-    int stepR2 = (servo22_initangle - currentAngleR2) / steps;
-
-    for (int i = 0; i < steps; i++) {
-        servo1[0].write(currentAngleL1 + stepL1 * i);
-        servo1[1].write(currentAngleL2 + stepL2 * i);
-        servo2[0].write(currentAngleR1 + stepR1 * i);
-        servo2[1].write(currentAngleR2 + stepR2 * i);
-        delay(delayTime);
-    }
-
     servo1[0].write(servo11_initangle);
     servo1[1].write(servo12_initangle);
     servo2[0].write(servo21_initangle);
@@ -198,9 +157,9 @@ void model_Calc()
 
     // 权重矩阵定义 分别对应v, theta, w
     BLA::Matrix<3, 3> Q = {
-        0.8, 0, 0,
-        0, 2, 0,
-        0, 0, 0};
+        0.1, 0, 0,
+        0, 3, 0,
+        0, 0, 0.5};
 
     BLA::Matrix<1, 1> R = {1};
 
@@ -227,7 +186,6 @@ void state_init()
 // 左右高度控制
 void LRHeighCtrl(float delta_h)
 {
-    delta_h *= 0.001;
     if(delta_h < 0){
         L_h = L_h + delta_h / 2;
         R_h = R_h - delta_h / 2;
@@ -235,26 +193,8 @@ void LRHeighCtrl(float delta_h)
         L_h = L_h - delta_h / 2;
         R_h = R_h + delta_h / 2;
     }
-    int angleL = height2angle(L_h*1000);
-    int angleR = height2angle(R_h*1000);
-    int currentAngleL1 = servo1[0].read();
-    int currentAngleL2 = servo1[1].read();
-    int currentAngleR1 = servo2[0].read();
-    int currentAngleR2 = servo2[1].read();
-
-    int stepL1 = (servo11_initangle - angleL - currentAngleL1) / 10;
-    int stepL2 = (servo12_initangle + angleL - currentAngleL2) / 10;
-    int stepR1 = (servo21_initangle + angleR - currentAngleR1) / 10;
-    int stepR2 = (servo22_initangle - angleR - currentAngleR2) / 10;
-
-    for (int i = 0; i < 10; i++) {
-        servo1[0].write(currentAngleL1 + stepL1 * i);
-        servo1[1].write(currentAngleL2 + stepL2 * i);
-        servo2[0].write(currentAngleR1 + stepR1 * i);
-        servo2[1].write(currentAngleR2 + stepR2 * i);
-        delay(20); // Adjust delay as needed for smoothness
-    }
-
+    int angleL = height2angle(L_h);
+    int angleR = height2angle(R_h);
     servo1[0].write(servo11_initangle - angleL);
     servo1[1].write(servo12_initangle + angleL);
     servo2[0].write(servo21_initangle + angleR);
@@ -281,15 +221,13 @@ void state_update()
     last_ypr[2] = ypr_data[2];
     mpu_get(ypr_data, gyro_data);
 
-    // float delta_h = 185*sin(ypr_data[2]);
+    // delta_h = 185*sin(ypr_data[2]);
     // LRHeighCtrl(delta_h);
 
     // 当前姿态更新
-    now_state.v = (motor1.getVelocity() + motor2.getVelocity()) * R / 2;
-    // now_state.v = 0;
+    now_state.v = (now_state.v + (motor1.getVelocity() + motor2.getVelocity()) * R / 2) / 2;
     now_state.theta = ypr_data[1];
-    // now_state.w = (ypr_data[1] - last_ypr[1]) / dt * 1000;
-    now_state.w = 0;
+    now_state.w = (now_state.w + (ypr_data[1] - last_ypr[1]) / dt * 1000) / 2;
     lqr.set_now_state(now_state);
 
     // 模型更新
@@ -316,7 +254,7 @@ void state_Control(State Target)
 void Controls(){
     state_update();
     State target_state;
-    // target_state.v = 0;
+    target_state.v = 0;
     target_state.theta = 0;
     target_state.w = 0;
     if(Serial.available()){
@@ -338,10 +276,6 @@ void Controls(){
         case 'D':
             HeightCtrl(-5);
             delay(10);
-            break;
-
-        case 'S':
-            target_state.v = 0;
             break;
         
         default:
@@ -375,25 +309,13 @@ void mpu_test();
 void motor_test();
 void LQR_test();
 
-void heighttest();
-
 void loop()
 {
-    // heighttest();
     Controls();
     // LQR_test();
     //motor_test();
     //mpu_test();
     delay(10);
-}
-
-
-void heighttest(){
-    if(Serial.available()){
-        int height = Serial.parseInt();
-        HeightCtrl(height);
-    }
-
 }
 
 
