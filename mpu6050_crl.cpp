@@ -130,9 +130,9 @@ void mpu_get(float *ypr_ret, float *gyro_ret) {
             ypr_ret[0] = ypr[0];
             ypr_ret[1] = ypr[1];
             ypr_ret[2] = ypr[2];
-            // gyro_ret[0] = gyro[3];
-            // gyro_ret[1] = gyro[2];
-            // gyro_ret[2] = gyro[1];
+            // gyro_ret[0] = gyro[0];
+            // gyro_ret[1] = gyro[1];
+            // gyro_ret[2] = gyro[2];
             // Serial.print("ypr\t");
             // Serial.print(ypr[0] * 180/M_PI);
             // Serial.print("\t");

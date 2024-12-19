@@ -13,23 +13,23 @@ using namespace BLA;
 #define OUTPUT_READABLE_YAWPITCHROLL
 
 //--------------------引脚定义--------------------
-#define motor1_pwmA 2
-#define motor1_pwmB 3
-#define motor1_pwmC 4
+#define motor1_pwmA 4
+#define motor1_pwmB 5
+#define motor1_pwmC 6
 #define motor1_enablepin 50
-#define motor1_sensor_pin 5
+#define motor1_sensor_pin 2
 // 记着测量下raw值
-#define motor1_min_raw 0
-#define motor1_max_raw 1023
+#define motor1_min_raw 16
+#define motor1_max_raw 900
 
-#define motor2_pwmA 6
-#define motor2_pwmB 7
-#define motor2_pwmC 8
+#define motor2_pwmA 7
+#define motor2_pwmB 8
+#define motor2_pwmC 9
 #define motor2_enablepin 52
-#define motor2_sensor_pin 9
+#define motor2_sensor_pin 3
 // 记着测量下raw值
-#define motor2_min_raw 0
-#define motor2_max_raw 1023
+#define motor2_min_raw 16
+#define motor2_max_raw 952
 
 #define servo11_pin 10
 #define servo12_pin 11
@@ -48,11 +48,12 @@ float h = (52.305+30)*0.001;       // 重心高度 m
 const float M = 0.4;   // 底盘质量 kg
 const float m = 1;   // 上体质量 kg
 const float J = m*h*h*1.5; // 整体惯性矩 kg*m^2
-const float t = 0.01;  // 采样时间 s
+const float t = 0.05;  // 采样时间 s
 const float g = 9.8;   // 重力加速度 m/s^2
 const float R = 0.03;  // 轮子半径 m
 float L_h = h;
 float R_h = h;
+float theta_Q = 1.5;
 // 0度时的高度 (52.305+30)*0.001m
 
 //--------------------全局变量定义--------------------
@@ -198,9 +199,9 @@ void model_Calc()
 
     // 权重矩阵定义 分别对应v, theta, w
     BLA::Matrix<3, 3> Q = {
-        0.8, 0, 0,
-        0, 2, 0,
-        0, 0, 0};
+        0, 0, 0,
+        0, 1, 0,
+        0, 0, 0.3};
 
     BLA::Matrix<1, 1> R = {1};
 
@@ -272,6 +273,7 @@ void state_update()
     }
     unsigned long now_time = millis();
     unsigned long dt = now_time - last_time;
+    Serial.println(dt);
     last_time = now_time;
     State now_state;
     // 倾斜角度更新
@@ -281,6 +283,12 @@ void state_update()
     last_ypr[2] = ypr_data[2];
     mpu_get(ypr_data, gyro_data);
 
+    Serial.print("last");
+    Serial.println(last_ypr[1]);
+    Serial.print("now");
+    Serial.println(ypr_data[1]);
+
+
     // float delta_h = 185*sin(ypr_data[2]);
     // LRHeighCtrl(delta_h);
 
@@ -288,10 +296,12 @@ void state_update()
     now_state.v = (motor1.getVelocity() + motor2.getVelocity()) * R / 2;
     // now_state.v = 0;
     now_state.theta = ypr_data[1];
-    // now_state.w = (ypr_data[1] - last_ypr[1]) / dt * 1000;
-    now_state.w = 0;
+    now_state.w = (ypr_data[1] - last_ypr[1]) / dt * 1000;
+    // now_state.w = 0;
     lqr.set_now_state(now_state);
 
+    Serial.println(now_state.w);
+    
     // 模型更新
     model.v = now_state.v;
     model.theta = now_state.theta;
@@ -306,6 +316,8 @@ void state_Control(State Target)
 {
     lqr.set_target_state(Target);
     double torque = lqr.lqrControl();
+    Serial.print("Torque ");
+    Serial.println(torque);
     motor1.torqueCtrl(torque);
     motor2.torqueCtrl(-torque);
     motor1.Ctrl_loop();
@@ -344,6 +356,20 @@ void Controls(){
             target_state.v = 0;
             break;
         
+        case 'M':
+            theta_Q += 0.2;
+            model_Calc();
+            Serial.print("theta_Q ");
+            Serial.println(theta_Q);
+            break;
+
+        case 'N':
+            theta_Q -= 0.2;
+            model_Calc();
+            Serial.print("theta_Q ");
+            Serial.println(theta_Q);
+            break;
+
         default:
             break;
         }
@@ -382,9 +408,9 @@ void loop()
     // heighttest();
     Controls();
     // LQR_test();
-    //motor_test();
+    // motor_test();
     //mpu_test();
-    delay(10);
+    // delay(10);
 }
 
 
@@ -416,12 +442,12 @@ void LQR_test(){
 void motor_test()
 {
     motor1.Ctrl_loop();
-    motor2.Ctrl_loop();
+    //motor2.Ctrl_loop();
     while (Serial.available())
     {
         float torque = Serial.parseFloat();
         motor1.torqueCtrl(torque);
-        motor2.torqueCtrl(-torque);
+        //motor2.torqueCtrl(-torque);
         Serial.print("Torque ");
         Serial.println(torque);
         while (Serial.available())

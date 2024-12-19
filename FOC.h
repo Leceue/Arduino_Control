@@ -83,6 +83,7 @@ public:
             delete sensor;
         }
         sensor = new MagneticSensorPWM(pin, min_raw, max_raw);
+        closedloop_enabled = true;
         
         // 根据电机ID选择对应的中断处理函数
         if (motorId == 0) {
@@ -108,7 +109,7 @@ public:
         }
         
         // Driver configuration
-        driver->voltage_power_supply = 22.2;
+        driver->voltage_power_supply = 14.8;
         driver->init();
         motor.linkDriver(driver);
         
@@ -118,7 +119,6 @@ public:
         // Set control mode based on closed-loop flag
         if (closedloop_enabled) {
             motor.controller = MotionControlType::velocity;
-            motor.torque_controller = TorqueControlType::voltage;
         } else {
             motor.controller = MotionControlType::velocity_openloop;
         }
@@ -150,10 +150,10 @@ public:
     }
     
     void Ctrl_loop() {
-        motor.move(now_velocity);
         if (closedloop_enabled) {
             motor.loopFOC();
         }
+        motor.move(now_velocity);
     }
     
     void torqueCtrl(float torque) {
@@ -177,8 +177,7 @@ public:
     
     // 获取电机状态的方法
     int getId() const { return motorId; }
-    // float getVelocity() const { return motor.shaft_velocity; }
-    float getVelocity() const { return now_velocity; }
+    float getVelocity() const { return motor.shaft_velocity; }
     // float getAngle() const { return motor.shaft_angle; }
     // bool isEnabled() const { return motor.enabled; }
 };
