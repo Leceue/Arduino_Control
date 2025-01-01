@@ -13,25 +13,25 @@ using namespace BLA;
 #define OUTPUT_READABLE_YAWPITCHROLL
 
 //--------------------引脚定义--------------------
-#define motor1_pwmA 6
-#define motor1_pwmB 7
-#define motor1_pwmC 8
-#define motor1_enablepin 52
-#define motor1_sensor_pin 2
-// 记着测量下raw值
-#define motor1_min_raw 64
-#define motor1_max_raw 2106
+// #define motor1_pwmA 6
+// #define motor1_pwmB 7
+// #define motor1_pwmC 8
+// #define motor1_enablepin 50
+// #define motor1_sensor_pin 2
+// // 记着测量下raw值
+// #define motor1_min_raw 68
+// #define motor1_max_raw 2092
 
-#define motor2_pwmA 9
-#define motor2_pwmB 10
-#define motor2_pwmC 11
-#define motor2_enablepin 50
-#define motor2_sensor_pin 3
-// 记着测量下raw值
-#define motor2_min_raw 0
-#define motor2_max_raw 1023
+// #define motor2_pwmA 9
+// #define motor2_pwmB 10
+// #define motor2_pwmC 11
+// #define motor2_enablepin 52
+// #define motor2_sensor_pin 3
+// // 记着测量下raw值
+// #define motor2_min_raw 64
+// #define motor2_max_raw 2106
 
-#define servo11_pin 7
+#define servo11_pin 5
 #define servo12_pin 4
 #define servo21_pin 13
 #define servo22_pin 12
@@ -40,7 +40,7 @@ using namespace BLA;
 #define servo21_initangle 5
 #define servo22_initangle 175
 
-#define mpu6050_interrupt_pin 18
+#define mpu6050_interrupt_pin 19
 
 // model parameter
 float h_init = (52.305 + 30) * 0.001; // 重心高度 m
@@ -58,8 +58,11 @@ const float R = 0.03;            // 轮子半径 m
 //--------------------全局变量定义--------------------
 
 // 电机控制
-motorCtrl motor1(0, motor1_pwmA, motor1_pwmB, motor1_pwmC, motor1_enablepin);
-motorCtrl motor2(1, motor2_pwmA, motor2_pwmB, motor2_pwmC, motor2_enablepin);
+// motorCtrl motor1(0, motor1_pwmA, motor1_pwmB, motor1_pwmC, motor1_enablepin);
+// motorCtrl motor2(1, motor2_pwmA, motor2_pwmB, motor2_pwmC, motor2_enablepin);
+// MotorController motor1(0, 14, motor1_pwmA, motor1_pwmB, motor1_pwmC, motor1_enablepin, motor1_min_raw, motor1_max_raw);
+// MotorController motor2(1, 14, motor2_pwmA, motor2_pwmB, motor2_pwmC, motor2_enablepin, motor2_min_raw, motor2_max_raw);
+
 // 舵机控制
 Servo servo1[2];
 Servo servo2[2];
@@ -126,16 +129,25 @@ void Servo_init()
     Serial.println("Servo ready.");
 }
 
-void motor_init()
-{
-    motor1.motorsensor(motor1_sensor_pin, motor1_min_raw, motor1_max_raw);
-    motor1.init();
-    Serial.println("Motor1 ready.");
+// void motor_init()
+// {
+//     motor1.motorsensor(motor1_sensor_pin, motor1_min_raw, motor1_max_raw);
+//     motor1.init();
+//     Serial.println("Motor1 ready.");
 
-    motor2.motorsensor(motor2_sensor_pin, motor2_min_raw, motor2_max_raw);
-    motor2.init();
-    Serial.println("Motor2 ready.");
-}
+//     //motor2.motorsensor(motor2_sensor_pin, motor2_min_raw, motor2_max_raw);
+//     //motor2.init();
+//     Serial.println("Motor2 ready.");
+// }
+
+// void motor_init()
+// {
+//     motor1.init();
+//     Serial.println("Motor1 ready.");
+
+//     motor2.init();
+//     Serial.println("Motor2 ready.");
+// }
 
 BLA::Matrix<3, 3> espA(const BLA::Matrix<3, 3> &A, float i = 1.0)
 {
@@ -161,9 +173,9 @@ void model_Calc()
 
     // 权重矩阵定义 分别对应v, theta, w
     BLA::Matrix<3, 3> Q = {
-        0.1, 0, 0,
-        0, 3, 0,
-        0, 0, 0.01};
+        0.01, 0, 0,
+        0, 1, 0,
+        0, 0, 0};
 
     BLA::Matrix<1, 1> R = {1};
 
@@ -218,10 +230,14 @@ void state_update()
     // LRHeighCtrl(delta_h);
 
     // 当前姿态更新
-    now_state.v = (M1Dir * motor1.getVelocity() + M2Dir * motor2.getVelocity()) * R / 2;
-    now_state.theta = ypr_data[1];
+    now_state.v = (M1Dir * getVelocity_motor1() + M2Dir * getVelocity_motor2()) * R / 2;
+    now_state.theta = ypr_data[2];
     now_state.w = 0;
     lqr.set_now_state(now_state);
+    Serial.print("v:");
+    Serial.print(now_state.v);
+    Serial.print(" theta:");
+    Serial.println(now_state.theta);
 
     // 模型更新
     model.v = now_state.v;
@@ -229,17 +245,15 @@ void state_update()
     model.w = now_state.w;
     // 记着再次计算
     model.h = h;
-    model.roll = ypr_data[2];
+    model.roll = ypr_data[1];
 }
 
 void state_Control(State Target)
 {
     lqr.set_target_state(Target);
     double torque = lqr.lqrControl();
-    motor1.torqueCtrl(torque);
-    motor2.torqueCtrl(-torque);
-    motor1.Ctrl_loop();
-    motor2.Ctrl_loop();
+    torqueCtrl(torque);
+    Ctrl_loop();
 }
 
 // LQR控制
@@ -250,28 +264,32 @@ void Controls()
     target_state.theta = 0;
     target_state.w = 0;
     lqr.set_target_state(target_state);
+    //Ctrl_loop();
 
-    motor1.loopFOC();
-    motor2.loopFOC();
     state_update();
     float pitch = model.theta;
     float speedAvg = model.v;
 
     float torque = lqr.lqrControl();
+    // float Kc=0.05;
+    //float torque = - Kc*model.theta;
+    Serial.println(torque);
+    
+    torqueCtrl(torque);
 
-    motor1.torqueCtrl(M1Dir * torque);
-    motor2.torqueCtrl(M2Dir * torque);
+    motor1.move();
+    motor2.move();
 
-    if (loopCnt >= 100)
-    {
-        Serial.print("status:");
-        Serial.print(speedAvg);
-        Serial.print(pitch); 
-        Serial.println(torque);
-        loopCnt = 0;
-    }
+    // if (loopCnt >= 100)
+    // {
+    //     Serial.print("status:");
+    //     Serial.print(speedAvg);
+    //     Serial.print(pitch); 
+    //     Serial.println(torque);
+    //     loopCnt = 0;
+    // }
 
-    loopCnt++;
+    //loopCnt++;
 }
 
 // 主函数
@@ -282,9 +300,15 @@ void setup()
     Serial.begin(9600);
     Serial.println("Openned the Serial\n");
     Servo_init();                    // 初始化舵机
+    
+    
+
     mpu_init(mpu6050_interrupt_pin); // 占用了18号引脚，初始化MPU6050,并设置中断引脚
-    // motor_init();                    // 初始化电机
-    // state_init();                    // 初始化状态
+    motor_init();                    // 初始化电机
+    state_init();                    // 初始化状态
+
+    //motor1.enable();
+    //motor2.enable();
 }
 
 int count = 0;
@@ -296,45 +320,45 @@ void LQR_test();
 
 void loop()
 {
-    // Controls();
+    Controls();
     // LQR_test();
     // motor_test();
-    mpu_test();
+    //mpu_test();
     // servo_test();
-    delay(10);
 }
 
-void LQR_test()
-{
-    state_update();
-    State target_state;
-    target_state.v = 0;
-    target_state.theta = 0;
-    target_state.w = 0;
-    lqr.set_target_state(target_state);
-    float torque = lqr.lqrControl();
-    motor1.torqueCtrl(torque);
-    motor2.torqueCtrl(-torque);
-    Serial.print("Torque ");
-    Serial.println(torque);
-    motor1.Ctrl_loop();
-    motor2.Ctrl_loop();
-}
+// void LQR_test()
+// {
+//     state_update();
+//     State target_state;
+//     target_state.v = 0;
+//     target_state.theta = 0;
+//     target_state.w = 0;
+//     lqr.set_target_state(target_state);
+//     float torque = lqr.lqrControl();
+//     motor1.torqueCtrl(torque);
+//     motor2.torqueCtrl(-torque);
+//     Serial.print("Torque ");
+//     Serial.println(torque);
+//     motor1.Ctrl_loop();
+//     motor2.Ctrl_loop();
+// }
 
 void motor_test()
 {
-    motor1.Ctrl_loop();
-    motor2.Ctrl_loop();
+    Ctrl_loop();
+
     while (Serial.available())
     {
         float torque = Serial.parseFloat();
-        motor1.torqueCtrl(torque);
-        motor2.torqueCtrl(-torque);
+        torqueCtrl(torque);
         Serial.print("Torque ");
         Serial.println(torque);
         while (Serial.available())
             Serial.read();
     }
+        motor1.move();
+    motor2.move();
 }
 
 void mpu_test()

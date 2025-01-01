@@ -3,159 +3,112 @@
 
 #include "SimpleFOC.h"
 
-class motorCtrl {
-private:
-    BLDCMotor motor = BLDCMotor(14,10.9,33,0.00474);
-    BLDCDriver3PWM* driver;
-    MagneticSensorPWM* sensor;
-    bool closedloop_enabled;
-    
-    // Control parameters
-    float torque_constant;       // Nm/V
-    float now_torque = 0;
-    float Kt = 0.27; // Nm/A 电机转矩常数
+#define motor1_pwmA 6
+#define motor1_pwmB 7
+#define motor1_pwmC 8
+#define motor1_enablepin 50
+#define motor1_sensor_pin 2
+// 记着测量下raw值
+#define motor1_min_raw 68
+#define motor1_max_raw 2092
 
-    // 存储中断处理函数指针
-    void (*pwmHandler)();
-    
-    // 存储电机ID，用于区分不同电机
-    int motorId;
-    
-    // 存储实例指针
-    static motorCtrl* instances[2];  // 支持两个电机实例
-    
-public:
-    motorCtrl(int id, int pwmA, int pwmB, int pwmC, int enablepin) 
-        : driver(nullptr)
-        , sensor(nullptr)
-        , closedloop_enabled(true)
-        , torque_constant(0.27)
-        , pwmHandler(nullptr)
-        , motorId(id) 
-    {
-        if (id >= 0 && id < 2) {  // 确保ID在有效范围内
-            instances[id] = this;
-            driver = new BLDCDriver3PWM(pwmA, pwmB, pwmC, enablepin);
-        }
-    }
-    
-    ~motorCtrl() {
-        if (driver) delete driver;
-        if (sensor) delete sensor;
-        if (motorId >= 0 && motorId < 2) {
-            instances[motorId] = nullptr;
-        }
-    }
-    
-    // 静态方法获取实例
-    static motorCtrl* getInstance(int id) {
-        if (id >= 0 && id < 2) {
-            return instances[id];
-        }
-        return nullptr;
-    }
-    
-    // 非静态的PWM处理方法
-    // void handlePWM() {
-    //     if (sensor) {
-    //         sensor->handlePWM();
-    //     }
-    // }
-    
-    // 静态中断处理函数
-    // static void pwmHandlerMotor0() {
-    //     if (instances[0]) {
-    //         instances[0]->handlePWM();
-    //     }
-    // }
-    
-    // static void pwmHandlerMotor1() {
-    //     if (instances[1]) {
-    //         instances[1]->handlePWM();
-    //     }
-    // }
-    
-    void motorsensor(int pin, int min_raw, int max_raw) {
-        if (sensor) {
-            delete sensor;
-        }
-        sensor = new MagneticSensorPWM(pin, min_raw, max_raw);
-        sensor->init();
-        // 根据电机ID选择对应的中断处理函数
-        // if (motorId == 0) {
-        //     pwmHandler = pwmHandlerMotor0;
-        // } else if (motorId == 1) {
-        //     pwmHandler = pwmHandlerMotor1;
-        // }
-        
-        // // 设置中断
-        // if (sensor && pwmHandler) {
-        //     sensor->enableInterrupt(pwmHandler);
-        // }
-    }
-    
-    void init() {
-        // if (!sensor || !driver) return;
-        // Link sensor and driver
-        motor.linkSensor(sensor);
-        
-        // Driver configuration
-        driver->voltage_power_supply = 14.8;
-        driver->init();
-        motor.linkDriver(driver);
-        
-        // Set control mode based on closed-loop flag
-        motor.foc_modulation = FOCModulationType::SpaceVectorPWM;
-        motor.torque_controller = TorqueControlType::voltage;
-        motor.controller = MotionControlType::torque;
+#define motor2_pwmA 9
+#define motor2_pwmB 10
+#define motor2_pwmC 11
+#define motor2_enablepin 52
+#define motor2_sensor_pin 3
+// 记着测量下raw值
+#define motor2_min_raw 64
+#define motor2_max_raw 2106
 
-        motor.voltage_limit = 14.8;
+const float Kt = 0.27; // Nm/A 电机转矩常数
 
-          //速度PI环设置
-        motor.PID_velocity.P = 0.021;
-        motor.PID_velocity.I = 0.12;
+//BLDCMotor motor1 = BLDCMotor(14, 10.9, 33, 0.00474);
+BLDCMotor motor1 = BLDCMotor(14, 10.9);
+BLDCMotor motor2 = BLDCMotor(14, 10.9);
 
-        //角度P环设置
-        motor.P_angle.P = 20;
+BLDCDriver3PWM driver1 = BLDCDriver3PWM(motor1_pwmA, motor1_pwmB, motor1_pwmC, motor1_enablepin);
+BLDCDriver3PWM driver2 = BLDCDriver3PWM(motor2_pwmA, motor2_pwmB, motor2_pwmC, motor2_enablepin);
 
-        //最大电机限制电机
-        motor.voltage_limit = 8;
+MagneticSensorPWM sensor1 = MagneticSensorPWM(motor1_sensor_pin, motor1_min_raw, motor1_max_raw);
+MagneticSensorPWM sensor2 = MagneticSensorPWM(motor2_sensor_pin, motor2_min_raw, motor2_max_raw);
 
-        //速度低通滤波时间常数
-        motor.LPF_velocity.Tf = 0.01;
+void doPWM1()
+{
+    sensor1.handlePWM();
+}
 
-        //设置最大速度限制
-        motor.velocity_limit = 40;
+void doPWM2()
+{
+    sensor2.handlePWM();
+}
 
-        // Initialize motor
-        motor.init();
-        
-        // Initialize FOC if using closed-loop control
-        motor.initFOC();
-    }
+void motor_init()
+{
+    sensor1.init();
+    sensor2.init();
+    // sensor1.enableInterrupt(doPWM1);
+    // sensor2.enableInterrupt(doPWM2);
 
-    void loopFOC(){
-        motor.loopFOC();
-    }
+    driver1.voltage_power_supply = 16;
+    driver1.init();
+
+    driver2.voltage_power_supply = 16;
+    driver2.init();
+
+    motor1.linkSensor(&sensor1);
+    motor2.linkSensor(&sensor2);
+    motor1.linkDriver(&driver1);
+    motor2.linkDriver(&driver2);
+
+    // Set control mode based on closed-loop flag
+    motor1.voltage_sensor_align = 5;
     
-    void Ctrl_loop() {
-        motor.target = now_torque/Kt;
-        motor.move();
-    }
-    
-    void torqueCtrl(float torque) {
-        now_torque = torque;
-        // motor.move(target_velocity);
-    }
-    
-    // 获取电机状态的方法
-    int getId() const { return motorId; }
-    float getVelocity() const { return motor.shaft_velocity;}
-    float getAngle() const { return motor.shaft_angle; }
-    bool isEnabled() const { return motor.enabled; }
-};
+    // motor1.foc_modulation = FOCModulationType::SpaceVectorPWM;
+    // motor1.controller = MotionControlType::torque;
+    motor1.voltage_limit = 10;
+    motor1.LPF_velocity.Tf = 0.01;
+    motor1.useMonitoring(Serial);
+    //motor1.velocity_limit = 40;
 
-// 初始化静态成员变量
-motorCtrl* motorCtrl::instances[2] = {nullptr, nullptr};
+    motor2.voltage_sensor_align = 5;
+    motor2.foc_modulation = FOCModulationType::SpaceVectorPWM;
+    motor2.controller = MotionControlType::torque;
+    motor2.voltage_limit = 10;
+    motor2.LPF_velocity.Tf = 0.01;
+    motor2.useMonitoring(Serial);
+    //motor2.velocity_limit = 40;
+
+    motor1.init();
+    motor2.init();
+
+    motor1.initFOC();
+    motor2.initFOC();
+
+    // motor1.disable();
+    // motor2.disable();
+    
+
+}
+
+
+
+void Ctrl_loop()
+{
+    motor1.loopFOC();
+    motor2.loopFOC();
+}
+
+void torqueCtrl(float torque)
+{
+    motor1.target = torque / Kt;
+    motor2.target = -torque / Kt;
+    
+}
+
+float getVelocity_motor1()  { return motor1.shaft_velocity;}
+float getVelocity_motor2()  { return motor2.shaft_velocity;}
+float getAngle_motor1()  { return motor1.shaft_angle; }
+float getAngle_motor2()  { return motor2.shaft_angle; }
 
 #endif
