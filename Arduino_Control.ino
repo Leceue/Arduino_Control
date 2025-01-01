@@ -1,7 +1,7 @@
 #include <SimpleFOC.h>
 #include <Servo.h>
 #include <BasicLinearAlgebra.h>
-#include "MPU_old/mpu6050_crl.h"
+#include "mpu6050_crl.h"
 #include <math.h>
 #include "FOC.h"
 #include "LQRCtrl.h"
@@ -13,46 +13,46 @@ using namespace BLA;
 #define OUTPUT_READABLE_YAWPITCHROLL
 
 //--------------------引脚定义--------------------
-#define motor1_pwmA 2
-#define motor1_pwmB 3
-#define motor1_pwmC 4
-#define motor1_enablepin 50
-#define motor1_sensor_pin 5
+#define motor1_pwmA 6
+#define motor1_pwmB 7
+#define motor1_pwmC 8
+#define motor1_enablepin 52
+#define motor1_sensor_pin 2
 // 记着测量下raw值
-#define motor1_min_raw 0
-#define motor1_max_raw 1023
+#define motor1_min_raw 64
+#define motor1_max_raw 2106
 
-#define motor2_pwmA 6
-#define motor2_pwmB 7
-#define motor2_pwmC 8
-#define motor2_enablepin 52
-#define motor2_sensor_pin 9
+#define motor2_pwmA 9
+#define motor2_pwmB 10
+#define motor2_pwmC 11
+#define motor2_enablepin 50
+#define motor2_sensor_pin 3
 // 记着测量下raw值
 #define motor2_min_raw 0
 #define motor2_max_raw 1023
 
-#define servo11_pin 10
-#define servo12_pin 11
-#define servo21_pin 12
-#define servo22_pin 13
+#define servo11_pin 7
+#define servo12_pin 4
+#define servo21_pin 13
+#define servo22_pin 12
 #define servo11_initangle 170
-#define servo12_initangle 0
-#define servo21_initangle 0
-#define servo22_initangle 180
+#define servo12_initangle 10
+#define servo21_initangle 5
+#define servo22_initangle 175
 
 #define mpu6050_interrupt_pin 18
 
 // model parameter
-const float M = 0.4;   // 底盘质量 kg
-const float m = 1;   // 上体质量 kg
-const float J = m*h*h*1.5; // 整体惯性矩 kg*m^2
-const float t = 0.01;  // 采样时间 s
-const float g = 9.8;   // 重力加速度 m/s^2
-const float R = 0.03;  // 轮子半径 m
 float h_init = (52.305 + 30) * 0.001; // 重心高度 m
-float h = (52.305+30)*0.001;       // 重心高度 m
+float h = (52.305 + 0) * 0.001;      // 重心高度 m
 float L_h = h;
 float R_h = h;
+const float M = 0.4;             // 底盘质量 kg
+const float m = 1;               // 上体质量 kg
+const float J = m * h * h * 1.5; // 整体惯性矩 kg*m^2
+const float t = 0.01;            // 采样时间 s
+const float g = 9.8;             // 重力加速度 m/s^2
+const float R = 0.03;            // 轮子半径 m
 // 0度时的高度 (52.305+30)*0.001m
 
 //--------------------全局变量定义--------------------
@@ -65,6 +65,10 @@ Servo servo1[2];
 Servo servo2[2];
 // LQR控制
 LQRControl lqr(100);
+
+int M1Dir = 1;
+int M2Dir = 2;
+int loopCnt = 0;
 
 float ypr_data[3];  // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 float gyro_data[3]; // [yawv, pitchv, rollv]         gyro container
@@ -96,12 +100,12 @@ int height2angle(float height)
 // 高度控制
 void HeightCtrl(float up_height)
 {
-    int angle = height2angle(up_height + h);
+    int angle = height2angle(up_height + h * 1000);
     servo1[0].write(servo11_initangle - angle);
     servo1[1].write(servo12_initangle + angle);
     servo2[0].write(servo21_initangle + angle);
     servo2[1].write(servo22_initangle - angle);
-    h = up_height + h;
+    h = up_height * 0.001 + h;
     L_h = h;
     R_h = h;
     model.h = h;
@@ -114,21 +118,21 @@ void Servo_init()
     servo1[1].attach(servo12_pin);
     servo2[0].attach(servo21_pin);
     servo2[1].attach(servo22_pin);
-    servo1[0].write(servo11_initangle);
-    servo1[1].write(servo12_initangle);
-    servo2[0].write(servo21_initangle);
-    servo2[1].write(servo22_initangle);
+    // servo1[0].write(servo11_initangle);
+    // servo1[1].write(servo12_initangle);
+    // servo2[0].write(servo21_initangle);
+    // servo2[1].write(servo22_initangle);
     HeightCtrl(10);
     Serial.println("Servo ready.");
 }
 
 void motor_init()
 {
-    // motor1.motorsensor(motor1_sensor_pin, motor1_min_raw, motor1_max_raw);
+    motor1.motorsensor(motor1_sensor_pin, motor1_min_raw, motor1_max_raw);
     motor1.init();
     Serial.println("Motor1 ready.");
 
-    // motor2.motorsensor(motor2_sensor_pin, motor2_min_raw, motor2_max_raw);
+    motor2.motorsensor(motor2_sensor_pin, motor2_min_raw, motor2_max_raw);
     motor2.init();
     Serial.println("Motor2 ready.");
 }
@@ -159,7 +163,7 @@ void model_Calc()
     BLA::Matrix<3, 3> Q = {
         0.1, 0, 0,
         0, 3, 0,
-        0, 0, 0.5};
+        0, 0, 0.01};
 
     BLA::Matrix<1, 1> R = {1};
 
@@ -186,10 +190,13 @@ void state_init()
 // 左右高度控制
 void LRHeighCtrl(float delta_h)
 {
-    if(delta_h < 0){
+    if (delta_h < 0)
+    {
         L_h = L_h + delta_h / 2;
         R_h = R_h - delta_h / 2;
-    }else if(delta_h > 0){
+    }
+    else if (delta_h > 0)
+    {
         L_h = L_h - delta_h / 2;
         R_h = R_h + delta_h / 2;
     }
@@ -204,37 +211,22 @@ void LRHeighCtrl(float delta_h)
 // 状态更新
 void state_update()
 {
-    static unsigned long last_time = 0;
-    if (last_time == 0)
-    {
-        last_time = millis();
-        return;
-    }
-    unsigned long now_time = millis();
-    unsigned long dt = now_time - last_time;
-    last_time = now_time;
     State now_state;
-    // 倾斜角度更新
-    float last_ypr[3];
-    last_ypr[0] = ypr_data[0];
-    last_ypr[1] = ypr_data[1];
-    last_ypr[2] = ypr_data[2];
-    mpu_get(ypr_data, gyro_data);
+    mpu_get(ypr_data);
 
     // delta_h = 185*sin(ypr_data[2]);
     // LRHeighCtrl(delta_h);
 
     // 当前姿态更新
-    now_state.v = (now_state.v + (motor1.getVelocity() + motor2.getVelocity()) * R / 2) / 2;
+    now_state.v = (M1Dir * motor1.getVelocity() + M2Dir * motor2.getVelocity()) * R / 2;
     now_state.theta = ypr_data[1];
-    now_state.w = (now_state.w + (ypr_data[1] - last_ypr[1]) / dt * 1000) / 2;
+    now_state.w = 0;
     lqr.set_now_state(now_state);
 
     // 模型更新
     model.v = now_state.v;
     model.theta = now_state.theta;
     model.w = now_state.w;
-    // model.torque = (motor1.getTorque() + motor2.getTorque()) / 2;
     // 记着再次计算
     model.h = h;
     model.roll = ypr_data[2];
@@ -251,43 +243,36 @@ void state_Control(State Target)
 }
 
 // LQR控制
-void Controls(){
-    state_update();
+void Controls()
+{
     State target_state;
     target_state.v = 0;
     target_state.theta = 0;
     target_state.w = 0;
-    if(Serial.available()){
-        char command = Serial.read();
-        switch (command)
-        {
-        case 'F':
-            target_state.v = 5;
-            break;
-        
-        case 'B':
-            target_state.v = -5;
-            break;
+    lqr.set_target_state(target_state);
 
-        case 'U':
-            HeightCtrl(5);
-            delay(10);
-            break;
-        case 'D':
-            HeightCtrl(-5);
-            delay(10);
-            break;
-        
-        default:
-            break;
-        }
-        while(Serial.available()){
-            Serial.read();
-        }
+    motor1.loopFOC();
+    motor2.loopFOC();
+    state_update();
+    float pitch = model.theta;
+    float speedAvg = model.v;
+
+    float torque = lqr.lqrControl();
+
+    motor1.torqueCtrl(M1Dir * torque);
+    motor2.torqueCtrl(M2Dir * torque);
+
+    if (loopCnt >= 100)
+    {
+        Serial.print("status:");
+        Serial.print(speedAvg);
+        Serial.print(pitch); 
+        Serial.println(torque);
+        loopCnt = 0;
     }
-    state_Control(target_state);
-}
 
+    loopCnt++;
+}
 
 // 主函数
 
@@ -296,10 +281,10 @@ void setup()
     // Initialize serial communication at 9600 bits per second:
     Serial.begin(9600);
     Serial.println("Openned the Serial\n");
-    Servo_init(); // 初始化舵机
-    mpu_init(mpu6050_interrupt_pin); //占用了18号引脚，初始化MPU6050,并设置中断引脚
-    motor_init(); // 初始化电机
-    state_init(); // 初始化状态
+    Servo_init();                    // 初始化舵机
+    mpu_init(mpu6050_interrupt_pin); // 占用了18号引脚，初始化MPU6050,并设置中断引脚
+    // motor_init();                    // 初始化电机
+    // state_init();                    // 初始化状态
 }
 
 int count = 0;
@@ -311,15 +296,16 @@ void LQR_test();
 
 void loop()
 {
-    Controls();
+    // Controls();
     // LQR_test();
-    //motor_test();
-    //mpu_test();
+    // motor_test();
+    mpu_test();
+    // servo_test();
     delay(10);
 }
 
-
-void LQR_test(){
+void LQR_test()
+{
     state_update();
     State target_state;
     target_state.v = 0;
@@ -369,7 +355,7 @@ void mpu_test()
     last_ypr[0] = ypr_data[0];
     last_ypr[1] = ypr_data[1];
     last_ypr[2] = ypr_data[2];
-    mpu_get(ypr_data, gyro_data);
+    mpu_get(ypr_data);
     Serial.print("ypr\t");
     Serial.print(ypr_data[0] * 180 / M_PI);
     Serial.print("\t");
